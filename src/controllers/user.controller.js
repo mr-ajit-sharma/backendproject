@@ -15,20 +15,24 @@ const registerUser = asyncHandler(async (req, res) => {
      * check for the user creation 
      * return res 
      * */
-    const { username, email } = req.body
-    console.log("email:", email, "username", username)
+    const { username, email,fullName,password } = req.body
+    console.log(req.avatar)
 
-    if ([fullname, email, password, username].some((field) => field.trim() === "")) {
+    if ([ email, password,fullName, username].some((field) => field.trim() === "")) {
         throw new ApiError(400, "all fields are mandatory")
     }
 
-    const existedUser = User.findOne({ $or: [{ username }, [email]] })
+    const existedUser =await  User.findOne({ $or: [{ username:username }, {email:email}] })
     if (existedUser) {
         throw new ApiError(409, "user is already exist")
     }
 
     const avatarLocalPath = req.files?.avatar[0]?.path;
-    const coverImageLocalPath = req.files?.coverImage[0]?.path
+    let coverImageLocalPath ;
+
+    if(req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length>0){
+        coverImageLocalPath=req.files.coverImage[0].path
+    }
     if (!avatarLocalPath) {
         throw new ApiError(400, "avatar file is required")
     }
@@ -37,10 +41,10 @@ const registerUser = asyncHandler(async (req, res) => {
     const coverImage = await uploadOnCloudinary(coverImageLocalPath)
 
     const user = await User.create({
-        fullname,
+        fullName,
         email,
         password,
-        avatar: avatar.url(),
+        avatar: avatar.url,
         username: username.toLowerCase(),
         coverImage: coverImage?.url || "",
 
@@ -51,6 +55,8 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new ApiError(500, "something went wronmng while creating the user")
     }
 
-    return res.status(201).json(ApiResponse(200, createdUser, "successfullly created the user"))
+    return res.status(201).json(new ApiResponse(200, createdUser, "successfullly created the user"))
 })
-export { registerUser }
+export default  registerUser
+
+
