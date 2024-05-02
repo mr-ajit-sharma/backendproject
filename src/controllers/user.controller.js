@@ -4,6 +4,7 @@ import { ApiResponse } from '../utils/ApiResponse.js'
 import { User } from "../models/user.model.js"
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import jwt from 'jsonwebtoken'
+import mongoose from "mongoose";
 const generateAccessAndRefreshTokens = async (userId) => {
     try {
         const user = await User.findById(userId)
@@ -198,7 +199,7 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     // fir hum log ne dekha ki agar hain to bhi nhi hai to bhi file ko upload karna h lekin ek variable me invoke krke
     // agar file hain to uski id dhudo and use update karo 
     // bad me dhundhane ke bad uske file ka path dalna h uske bad wo new vallue update ho sake isliye true kiya h
-    const  avatarLocalPath = req.file?.path;
+    const avatarLocalPath = req.file?.path;
     if (!avatarLocalPath) {
         throw new ApiError(400, "image is not uploaded")
     }
@@ -206,30 +207,119 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     if (!avatar.url) {
         throw new ApiError(400, "error while uploading on the avatar")
     }
-    const user=await User.findByIdAndUpdate(req.user?._id, {
+    const user = await User.findByIdAndUpdate(req.user?._id, {
         $set: {
             avatar: avatar.url
         }
     }, { new: true }).select("-password")
-    return res.status(200).json(new ApiResponse(200,user,"successfully updated the avatar"))
+    return res.status(200).json(new ApiResponse(200, user, "successfully updated the avatar"))
 
 })
-const updateUserCoverImage=asyncHandler(async(req,res)=>{
-    const coverImageLocalpath=req.file?.path
-    if(!coverImageLocalpath){
-        throw new ApiError(400,"localpath is not found")
+const updateUserCoverImage = asyncHandler(async (req, res) => {
+    const coverImageLocalpath = req.file?.path
+    if (!coverImageLocalpath) {
+        throw new ApiError(400, "localpath is not found")
     }
-    const coverImage=uploadOnCloudinary(coverImageLocalpath)
-    if(!coverImage.url){
-        throw new ApiError(400,"coverimage url is not found")
+    const coverImage = uploadOnCloudinary(coverImageLocalpath)
+    if (!coverImage.url) {
+        throw new ApiError(400, "coverimage url is not found")
     }
-    const user=await User.findByIdAndUpdate(req.user?._id,{$set:{
-        coverImage:coverImage.url
-    }},{new:true}).select("-password")
-    return res.status(200).json(new ApiResponse(200,user,"successfully updated the coverImage"))
+    const user = await User.findByIdAndUpdate(req.user?._id, {
+        $set: {
+            coverImage: coverImage.url
+        }
+    }, { new: true }).select("-password")
+    return res.status(200).json(new ApiResponse(200, user, "successfully updated the coverImage"))
+})
+const userChannelProfile = asyncHandler(async (req, res) => {
+    const { username } = req.params;
+    if (!username?.trim()) {
+        throw new ApiError(400, "username is missing")
+    }
+    const channel = await User.aggregate([
+        {
+            $match: {
+                username: username?.toLowerCase(),
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscribers"
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedTo"
+            }
+        },
+        {
+            $addFields: {
+                subscribersCount: {
+                    $size: "$subscribers"
+                },
+                channelsSubscribedToCount: {
+                    $size: "$subscribedTo"
+                },
+                isSubscribed: {
+                    $cond: {
+                        if: { $in: [req.user?._id, "$subscribers.subscriber"] },
+                        then: true,
+                        else: false
+                    }
+                }
+            }
+        },
+        {
+            $project: {
+                username: 1,
+                fullName: 1,
+                email: 1,
+                avatar: 1,
+                coverImage: 1,
+                isSubscribed: 1,
+                subscribersCount: 1,
+                channelsSubscribedToCount: 1
+            }
+        }
+    ])
+    console.log(channel)
+    if (!channel.length) {
+        throw new ApiError(400, "channel doesnot exist")
+    }
+    return res
+        .status(200)
+        .json(new ApiResponse(200, channel[0], "user channel fetched successfully"))
+})
+const getWatchHistory = asyncHandler(async (req, res) => {
+    const user = await User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Schema.Types.ObjectId(req.user._id)
+            }
+
+        },
+        {
+            $lookup:{
+                from:"videos",
+                localField:"watchHistory",
+                foreignField:"_id",
+                as:"watchHistory",
+                pipeline:[
+                    {
+                        // $lookup:
+                    }
+                ]
+            }
+        }
+    ])
 })
 
-
-export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar,updateUserCoverImage }
+export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage, userChannelProfile }
 
 
